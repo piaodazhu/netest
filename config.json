@@ -1,0 +1,10 @@
+{
+	"protocol": "TCP",
+
+	"totalPackets": 100000,
+	"concurrentNum": 10000,
+	"messegeNumPerConn": 3,
+	
+	"serverIP": "127.0.0.1",
+	"serverPort": 5000
+}
