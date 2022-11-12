@@ -29,9 +29,11 @@ enum support_proto {
 };
 
 struct netest_st {
+	int		id;
 	int		fd;
 	uint64_t	sendtime;
 	int		msgcnt;
+	time_t		tpoint[8];
 
 	int		sendlen;
 	u_char		sendbuf[MAX_PKT_SIZE];

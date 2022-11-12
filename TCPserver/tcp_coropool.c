@@ -49,7 +49,7 @@ void server(void *arg) {
 	local.sin_addr.s_addr = INADDR_ANY;
 	bind(fd, (struct sockaddr*)&local, sizeof(struct sockaddr_in));
 
-	listen(fd, 20);
+	listen(fd, 1000);
 	printf("listen port : %d\n", port);
 
 	while (1) {

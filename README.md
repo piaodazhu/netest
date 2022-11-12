@@ -6,7 +6,25 @@
 Very easy to start the network service testing:
 1. Define your request & reply packet format in `pkt_impl.c`, and implement the interfaces in `pkt_impl.c`. *(or just use the default implementation, that is ok)*
 2. Configure the testing arguments in `config.json`.
-3. `make`, then you can run `./netest`.
+3. `make`, then you can run `./netest` to test your service.
+
+# Configuration
+
+Edit `config.json` to configure the test options.
+
+```
+
+"protocol"              - UDP or TCP
+
+"totalPackets"          - total 
+"concurrentNum"         - max connection number at the same time
+"messegeNumPerConn": 3,
+"recordUnit": 1000,
+	
+"serverIP": "127.0.0.1",
+"serverPort": 5000
+
+```
 
 # Default Servers
 

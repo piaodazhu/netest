@@ -21,13 +21,15 @@ void server_reader(void *arg) {
 			ret = dyco_send(fd, buf, ret, 0);
 			if (ret == -1) {
 				dyco_close(fd);
-				// printf("server_reader send failed: fd=%d\n",fd);
+				printf("server_reader send failed: fd=%d\n",fd);
 				break;
 			}
 		} else if (ret == 0) {	
 			dyco_close(fd);
 			// printf("server_reader close: fd=%d\n",fd);
 			break;
+		} else {
+			printf("server_reader recv failed: fd=%d\n",fd);
 		}
 	}
 	dyco_close(fd);
@@ -48,18 +50,22 @@ void server(void *arg) {
 	local.sin_addr.s_addr = INADDR_ANY;
 	bind(fd, (struct sockaddr*)&local, sizeof(struct sockaddr_in));
 
-	listen(fd, 20);
+	listen(fd, 1024);
 	printf("listen port : %d\n", port);
-
+	// int cnt = 0;
 	while (1) {
 		socklen_t len = sizeof(struct sockaddr_in);
 		int cli_fd = dyco_accept(fd, (struct sockaddr*)&remote, &len);
+		// int cli_fd = accept_f(fd, (struct sockaddr*)&remote, &len);
+		// if (cli_fd < 0) cli_fd = dyco_accept(fd, (struct sockaddr*)&remote, &len);
+		// ++cnt;
 		int *client = malloc(sizeof(int));
 		*client = cli_fd;
 		int cid = dyco_coroutine_create(server_reader, client);
 #ifndef SHARED_STACK
 		dyco_coroutine_setStack(cid, NULL, DYCO_DEFAULT_STACKSIZE);
-#endif
+#endif		
+		// if (cnt % 100 == 0) printf("cnt = %d\n", cnt);
 	}
 	dyco_close(fd);
 	return;

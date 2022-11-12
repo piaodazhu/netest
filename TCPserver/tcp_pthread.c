@@ -10,7 +10,8 @@
 
 void *thread_function(void *arg);
 
-int main() {
+int main()
+{
     int listenfd, *connfdp;
     socklen_t server_len, client_len;
     struct sockaddr_in server_address;
@@ -23,37 +24,40 @@ int main() {
     server_address.sin_addr.s_addr = htonl(INADDR_ANY);
     server_address.sin_port = htons(SERV_PORT);
     server_len = sizeof(server_address);
-    bind(listenfd, (struct sockaddr*)&server_address, server_len);
+    bind(listenfd, (struct sockaddr *)&server_address, server_len);
 
-    listen(listenfd, 100);
+    listen(listenfd, 1024);
 
-    while (1) {
+    while (1)
+    {
         // printf("server waiting\n");
         connfdp = malloc(sizeof(int));
         client_len = sizeof(client_address);
-        *connfdp = accept(listenfd, (struct sockaddr*)&client_address, &client_len);
+        *connfdp = accept(listenfd, (struct sockaddr *)&client_address, &client_len);
         pthread_create(&th, NULL, thread_function, connfdp);
     }
 }
 
-void *thread_function(void *arg) {
-    int connfd = *((int*)arg);
-//     printf("Thread_function is running. Argument was %d\n", connfd);
+void *thread_function(void *arg)
+{
+    int connfd = *((int *)arg);
+    //     printf("Thread_function is running. Argument was %d\n", connfd);
     pthread_detach(pthread_self());
     free(arg);
 
     int ret;
     char buf[MAXLINE];
-    while (1) {
+    while (1)
+    {
         ret = recv(connfd, buf, MAXLINE, 0);
         if (ret <= 0)
             break;
-        
+
         ret = send(connfd, buf, ret, 0);
         if (ret <= 0)
             break;
     }
-    
+
     close(connfd);
     return NULL;
 }

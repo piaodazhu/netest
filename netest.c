@@ -6,16 +6,27 @@ enum support_proto protocol;
 #define DEFAULT_CONCURRENT_NUM	10
 int concurrent_num;
 
-#define DEFAULT_TOTAL_PACKETS	100
-int total_packets;
+#define DEFAULT_TOTAL_SESSIONS	100
+int total_sessions;
 
 #define DEFAULT_MSGNUMPERCONN	3
 int message_num_per_conn;
 
+#define DEFAULT_RECORDUNIT	1000
+int record_unit;
+
 char *server_ip;
 unsigned short server_port;
 
-int send_pkt, recv_pkt;
+int started_ssn, finished_ssn;
+
+typedef struct latency_st {
+	time_t endpoint;
+	time_t latency;
+	int id;
+	int fd;
+	time_t tpoint[8];
+}latency_st;
 
 int init()
 {
@@ -49,12 +60,12 @@ int init()
 		goto out;
 	}
 
-	cJSON *_totalPackets = cJSON_GetObjectItemCaseSensitive(conf, "totalPackets");
-	if (_totalPackets == NULL || !cJSON_IsNumber(_totalPackets)) {
-		total_packets = DEFAULT_TOTAL_PACKETS;
+	cJSON *_totalSessions = cJSON_GetObjectItemCaseSensitive(conf, "totalSessions");
+	if (_totalSessions == NULL || !cJSON_IsNumber(_totalSessions)) {
+		total_sessions = DEFAULT_TOTAL_SESSIONS;
 	}
 	else {
-		total_packets = _totalPackets->valueint;
+		total_sessions = _totalSessions->valueint;
 	}
 
 	cJSON *_concurrentNum = cJSON_GetObjectItemCaseSensitive(conf, "concurrentNum");
@@ -71,6 +82,14 @@ int init()
 	}
 	else {
 		message_num_per_conn = _messegeNumPerConn->valueint;
+	}
+
+	cJSON *_recordUnit = cJSON_GetObjectItemCaseSensitive(conf, "recordUnit");
+	if (_recordUnit == NULL || !cJSON_IsNumber(_recordUnit)) {
+		record_unit = DEFAULT_RECORDUNIT;
+	}
+	else {
+		record_unit = _recordUnit->valueint;
 	}
 
 	cJSON *_serverIP = cJSON_GetObjectItemCaseSensitive(conf, "serverIP");
@@ -106,8 +125,9 @@ void printconf()
 			UDP: printf("protocol: Unknown\n");
 	}
 	printf("server: %s:%u\n", server_ip, server_port);
-	printf("total packets: %d\n", total_packets);
+	printf("total sessions: %d\n", total_sessions);
 	printf("concurrent number: %d\n", concurrent_num);
+	printf("record unit: %d\n", record_unit);
 	printf("message number per connection: %d\n", message_num_per_conn);
 	printf("=====================\n");
 }
@@ -130,6 +150,8 @@ int newsockfd()
 		close(fd);
 		return -1;
 	}
+	int reuse = 1;
+	ret = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse));
 	return fd;
 }
 
@@ -143,10 +165,11 @@ int main()
 	printconf();
 	packets_init();
 
+	int done = 0;
 	int i;
-	struct netest_st *packets = (struct netest_st*) malloc(concurrent_num * sizeof(struct netest_st));
-	time_t *latency = (time_t*) malloc(total_packets * sizeof(time_t));
-	time_t *timepoint = (time_t*) malloc((total_packets / concurrent_num + 1) * sizeof(time_t));
+	struct netest_st *sessions = (struct netest_st*) malloc(concurrent_num * sizeof(struct netest_st));
+	latency_st *latency = (latency_st*) malloc(total_sessions * sizeof(latency_st));
+	time_t *timepoint = (time_t*) malloc((total_sessions / record_unit + 1) * sizeof(time_t));
 
 	struct sockaddr_in server;
 	server.sin_family = AF_INET;
@@ -158,17 +181,13 @@ int main()
 
 	for (i = 0; i < concurrent_num; ++i) {
 		int fd = newsockfd();
-		// packets[i].sendlen = snprintf(packets[i].sendbuf, MAX_PKT_SIZE, "it is a test buffer");
-		// packets[i].recvlen = MAX_PKT_SIZE;
-		// packets[i].sendlen = 512;
-		// memset(packets[i].sendbuf, 'x', 512);
-		packets[i].sendlen = request_mkbuf(packets[i].sendbuf, MAX_PKT_SIZE);
+		sessions[i].sendlen = request_mkbuf(sessions[i].sendbuf, MAX_PKT_SIZE);
 
-		packets[i].recvlen = MAX_PKT_SIZE;
-		packets[i].msgcnt = 0;
-		packets[i].fd = fd;
+		sessions[i].recvlen = MAX_PKT_SIZE;
+		sessions[i].msgcnt = 0;
+		sessions[i].fd = fd;
 		ev.events = EPOLLOUT | EPOLLERR | EPOLLHUP;
-		ev.data.ptr = &packets[i];
+		ev.data.ptr = &sessions[i];
 		epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
 	}
 
@@ -177,9 +196,14 @@ int main()
 	time_t start_sec = tv.tv_sec;
 	for (i = 0; i < concurrent_num; ++i) {
 		gettimeofday(&tv, NULL);
-		packets[i].sendtime = CUR_TIME(tv, start_sec);
-		ret = connect(packets[i].fd, (struct sockaddr*)&server, sizeof(server));
-		++send_pkt;
+		sessions[i].sendtime = CUR_TIME(tv, start_sec);
+		sessions[i].id = started_ssn;
+		ret = connect(sessions[i].fd, (struct sockaddr*)&server, sizeof(server));
+		++started_ssn;
+		if (started_ssn == total_sessions) {
+			done = 1;
+			printf("xx: %d  (%d/%d)\n", finished_ssn / record_unit, finished_ssn, started_ssn);
+		}
 		if(ret < 0) {
 			if(errno != EINPROGRESS) {
 				perror("connect");
@@ -190,74 +214,106 @@ int main()
 
 	int nevents;
 	struct epoll_event events[MAX_EVENTS];
-	struct netest_st *pkt;
-	int done = 0;
+	struct netest_st *session;
+	
 	int startpkt = concurrent_num;
-	int endpkt = 0;
+	int end_ssn = 0;
 	while (1) {
-		nevents = epoll_wait(epfd, events, MAX_EVENTS, 3000);
+		nevents = epoll_wait(epfd, events, MAX_EVENTS, 6000);
 		if (nevents < 0)
 			assert(0);
 		else if (nevents == 0)
 			goto finish;
 
 		for (i = 0; i < nevents; ++i) {
-			pkt = events[i].data.ptr;
+			session = events[i].data.ptr;
 
 			if (events[i].events & EPOLLERR) {
+				perror("epoll");
 				assert(0);
 			}
 			else if (events[i].events & EPOLLOUT) {
-				request_updatebuf(pkt->sendbuf, pkt->sendlen);
-				ret = send(pkt->fd, pkt->sendbuf, pkt->sendlen, 0);
-				assert(ret > 0);
+				request_updatebuf(session->sendbuf, session->sendlen);
+				ret = send(session->fd, session->sendbuf, session->sendlen, 0);
+				if (ret <= 0)
+				{
+					printf("send ret %d, (%d/%d)\n", ret, finished_ssn, started_ssn);
+				}
+				if (session->msgcnt == 0) {
+					gettimeofday(&tv, NULL);
+					session->tpoint[0] = CUR_TIME(tv, start_sec) - session->sendtime;
+				}
 
 				events[i].events = EPOLLIN | EPOLLERR | EPOLLHUP;
-				epoll_ctl(epfd, EPOLL_CTL_MOD, pkt->fd, &events[i]);
+				epoll_ctl(epfd, EPOLL_CTL_MOD, session->fd, &events[i]);
 			}
 			else if (events[i].events & EPOLLIN) {
-				ret = recv(pkt->fd, pkt->recvbuf, pkt->recvlen, 0);
-				assert(ret > 0);
-				ret = reply_parse(pkt->recvbuf, ret);
-				++pkt->msgcnt;
-				if (pkt->msgcnt < message_num_per_conn) {
-					request_updatebuf(pkt->sendbuf, pkt->sendlen);
-					ret = send(pkt->fd, pkt->sendbuf, pkt->sendlen, 0);
+				ret = recv(session->fd, session->recvbuf, session->recvlen, 0);
+				if (ret <= 0)
+				{
+					printf("recv ret %d, (%d/%d)\n", ret, finished_ssn, started_ssn);
+				}
+				assert(ret == 8);
+				ret = reply_parse(session->recvbuf, ret);
+				++session->msgcnt;
+				gettimeofday(&tv, NULL);
+				session->tpoint[session->msgcnt] = CUR_TIME(tv, start_sec) - session->sendtime;
+				if (session->msgcnt < message_num_per_conn) {
+					request_updatebuf(session->sendbuf, session->sendlen);
+					ret = send(session->fd, session->sendbuf, session->sendlen, 0);
 					assert(ret > 0);
 					continue;
 				}
 					
 				// printf("%.*s\n", ret, pkt->recvbuf);
 				gettimeofday(&tv, NULL);
-				latency[recv_pkt++] = CUR_TIME(tv, start_sec) - pkt->sendtime;
+				latency[finished_ssn].endpoint = CUR_TIME(tv, start_sec);
+				latency[finished_ssn].latency = CUR_TIME(tv, start_sec) - session->sendtime;
+				latency[finished_ssn].fd = session->fd;
+				latency[finished_ssn].id = session->id;
+				int j = 0;
+				while (j <= session->msgcnt) {
+					latency[finished_ssn].tpoint[j] = session->tpoint[j];
+					++j;
+				}
 
-				epoll_ctl(epfd, EPOLL_CTL_DEL, pkt->fd, NULL);
-				close(pkt->fd);
-				pkt->fd = newsockfd();
-				pkt->msgcnt = 0;
+				++finished_ssn;
+				epoll_ctl(epfd, EPOLL_CTL_DEL, session->fd, NULL);
+				close(session->fd);
+				session->fd = newsockfd();
+				session->msgcnt = 0;
 
-				if (recv_pkt % concurrent_num == 1)
-					timepoint[recv_pkt / concurrent_num] = CUR_TIME(tv, start_sec);
-					endpkt = recv_pkt;
+				if (finished_ssn % record_unit == 1) {
+					timepoint[finished_ssn / record_unit] = CUR_TIME(tv, start_sec);
+					end_ssn = finished_ssn;
+				}
+					
 				
 				if (done) {
-					if (recv_pkt == send_pkt)
+					if (finished_ssn == started_ssn)
 						goto finish;
 					else 
 						continue;
 				}
 				
 				gettimeofday(&tv, NULL);
-				pkt->sendtime = CUR_TIME(tv, start_sec);
-				connect(pkt->fd, (struct sockaddr*)&server, sizeof(server));
+				session->sendtime = CUR_TIME(tv, start_sec);
+				session->id = started_ssn;
+				ret = connect(session->fd, (struct sockaddr*)&server, sizeof(server));
+				if(ret < 0) {
+					if(errno != EINPROGRESS) {
+						perror("connect");
+						exit(EXIT_FAILURE);
+					}
+				}
 				
-				++send_pkt;
-				if (send_pkt == total_packets) {
+				++started_ssn;
+				if (started_ssn == total_sessions) {
 					done = 1;
 				}
 
 				events[i].events = EPOLLOUT | EPOLLERR | EPOLLHUP;
-				epoll_ctl(epfd, EPOLL_CTL_ADD, pkt->fd, &events[i]);
+				epoll_ctl(epfd, EPOLL_CTL_ADD, session->fd, &events[i]);
 			} else {
 				assert(0);
 			}
@@ -267,42 +323,56 @@ int main()
 finish:
 	double sum = 0;
 	time_t max_latency, min_latency;
-	for (i = startpkt; i < endpkt; i++) {
-		max_latency = MAX(max_latency, latency[i]);
-		min_latency = MIN(min_latency, latency[i]);
-		sum += latency[i];
+	min_latency = 1000000;
+	max_latency = 0;
+	for (i = startpkt; i < end_ssn; i++) {
+		max_latency = MAX(max_latency, latency[i].latency);
+		min_latency = MIN(min_latency, latency[i].latency);
+		if (i % record_unit == 0) {
+			printf("<index=%d, finishsecond=%ld, latency=%ld, fd=%d, timepoints=[", latency[i].id, latency[i].endpoint / 1000000, latency[i].latency, latency[i].fd);
+			int j = 0;
+			while (j <= message_num_per_conn) {
+				printf("%ld, ", latency[i].tpoint[j]);
+				++j;
+			}
+			printf("]>\n");
+		}
+			
+		sum += latency[i].latency;
 	}
-	double avr_latency = sum * 1.0 / (endpkt - startpkt);
+	double avr_latency = sum * 1.0 / (end_ssn - startpkt);
 
 
-	double lostrate = (send_pkt - recv_pkt) * 1.0 / send_pkt;
+	double failurerate = (started_ssn - finished_ssn) * 1.0 / started_ssn;
 	
-	printf("send : %d\n", send_pkt);
-	printf("recv : %d\n", recv_pkt);
-	printf("pkt loss : %f\n", lostrate);
+	printf("send : %d\n", started_ssn);
+	printf("recv : %d\n", finished_ssn);
+	printf("session failure rate: %f\n", failurerate);
 	printf("min_latency: %lu\n", min_latency);
 	printf("max_latency: %lu\n", max_latency);
 	printf("avr_latency: %f\n", avr_latency);
 
 	time_t tspace;
-	double pps = 0;
+	double sps = 0;
 	sum = 0;
-	for (i = 1; i < endpkt / concurrent_num; i++) {
+	// printf("sps: \n");
+	for (i = 1; i < end_ssn / record_unit; i++) {
 		tspace = timepoint[i] - timepoint[i - 1];
-		pps = concurrent_num * 1000000.0 / tspace;
-		printf("pps: %f\n", pps);
-		sum += pps;
+		sps = record_unit * 1000000.0 / tspace;
+		// printf("\t%d %f\n", i, sps);
+		sum += sps;
 	}
 
-	double avr_pps = sum * 1.0  / (endpkt / concurrent_num - 1);
-	printf("\navr_pps: %f\n", avr_pps);
+	double avr_sps = sum * 1.0  / (end_ssn / record_unit - 1);
+	printf("avr_sps: %f\n", avr_sps);
+	printf("avr_pps: %f\n", avr_sps * message_num_per_conn);
 
 	packets_report();
 
 	for (i = 0; i < concurrent_num; ++i) {
-		close(packets[i].fd);
+		close(sessions[i].fd);
 	}
-	free(packets);
+	free(sessions);
 	free(latency);
 	free(timepoint);
 

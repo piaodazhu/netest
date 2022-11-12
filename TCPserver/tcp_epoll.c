@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
 	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	servaddr.sin_port = htons(SERV_PORT);
 	bind(listenfd, (struct sockaddr *)&servaddr, sizeof(servaddr));
-	listen(listenfd, 100);
+	listen(listenfd, 1024);
 
 	efd = epoll_create(OPEN_MAX);
 

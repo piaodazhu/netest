@@ -1,9 +1,10 @@
 {
 	"protocol": "TCP",
 
-	"totalPackets": 100000,
-	"concurrentNum": 10000,
+	"totalSessions": 100000,
+	"concurrentNum": 12000,
 	"messegeNumPerConn": 3,
+	"recordUnit": 1000,
 	
 	"serverIP": "127.0.0.1",
 	"serverPort": 5000
