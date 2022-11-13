@@ -59,7 +59,7 @@ void server(void *arg) {
 		// int cli_fd = accept_f(fd, (struct sockaddr*)&remote, &len);
 		// if (cli_fd < 0) cli_fd = dyco_accept(fd, (struct sockaddr*)&remote, &len);
 		// ++cnt;
-		int *client = malloc(sizeof(int));
+		int *client = (int*)malloc(sizeof(int));
 		*client = cli_fd;
 		int cid = dyco_coroutine_create(server_reader, client);
 #ifndef SHARED_STACK
@@ -74,7 +74,7 @@ void server(void *arg) {
 int main() 
 {
 	int i = 0;
-	unsigned short *port = malloc(sizeof(short));
+	unsigned short *port = (unsigned short*)malloc(sizeof(short));
 	*port = SERV_PORT;
 	int cid = dyco_coroutine_create(server, port);
 #ifndef SHARED_STACK

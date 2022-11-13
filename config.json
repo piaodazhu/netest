@@ -1,8 +1,8 @@
 {
 	"protocol": "TCP",
 
-	"totalSessions": 100000,
-	"concurrentNum": 12000,
+	"totalSessions": 50000,
+	"concurrentNum": 100,
 	"messegeNumPerConn": 3,
 	"recordUnit": 1000,
 	
