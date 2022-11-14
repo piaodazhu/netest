@@ -16,13 +16,13 @@ Edit `config.json` to configure the test options.
 
 "protocol"              - UDP or TCP
 
-"totalPackets"          - total 
-"concurrentNum"         - max connection number at the same time
-"messegeNumPerConn": 3,
-"recordUnit": 1000,
+"totalSessions"         - total number of sessions
+"concurrentNum"         - max concurrent sessions number at the same time
+"messegeNumPerConn"     - sent message numbers after establish connect in each session
+"recordUnit"            - the timepoint will be record every "recordUnit" sessions
 	
-"serverIP": "127.0.0.1",
-"serverPort": 5000
+"serverIP"              - IP address of the server to be test
+"serverPort"            - Service Port of the server to be test
 
 ```
 
