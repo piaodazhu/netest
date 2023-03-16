@@ -28,13 +28,19 @@ Edit `config.json` to configure the test options.
 
 # Default Servers
 
-Some default **echo servers** are provided under directory `TCPserver` and `UDPserver`. Some of them are stupid loop server. Some of them are multi-thread server. Some of them use `epoll`. And some of them use coroutine. The coroutine servers use another project of mine: [`dyco-coroutine`](https://github.com/piaodazhu/dyco-coroutine). To build and run these server, you need to take several simple steps:
+Some default **echo servers** are provided under directory `TCPserver` and `UDPserver`. 
+
+Some of them are stupid loop server. Some of them are multi-thread server. 
+
+Some of them use `epoll`. 
+
+And some of them use coroutine. The coroutine servers use another project of mine: [`dyco-coroutine`](https://github.com/piaodazhu/dyco-coroutine). To build and run these server, you need to take several simple steps:
 1. `git clone https://github.com/piaodazhu/dyco-coroutine.git`. 
 2. `cd dyco-coroutine`, then run `make && sudo make install`. 
 3. go back to netest directory and run `make` again.
 
 # Note
 
-**In configuration file, `totalPackets` should be more than 3 times than `concurrentNum`.**
+**In configuration file, `totalSessions` should be more than 3 times than `concurrentNum`.**
 
-If any question, feel free to open a issue. PR is welcome.
+If any question, feel free to open issues. PR is welcome.
